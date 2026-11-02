@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ShopEasy FAQ Chatbot</title>
+<style>
+:root{--bg:#f1f4f8;--card:#fff;--ink:#1b2430;--mute:#66748a;--line:#dde3ec;--me:#1f6feb;--bot:#eef2f7;--chip:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e141c;--card:#161f2b;--ink:#e8edf4;--mute:#92a0b4;--line:#263243;--bot:#1f2b3a;--chip:#161f2b}}
+:root[data-theme="dark"]{--bg:#0e141c;--card:#161f2b;--ink:#e8edf4;--mute:#92a0b4;--line:#263243;--bot:#1f2b3a;--chip:#161f2b}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;justify-content:center}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.app{width:100%;max-width:640px;height:100%;display:flex;flex-direction:column;background:var(--card);border-inline:1px solid var(--line)}
+header{padding:14px 18px;border-bottom:1px solid var(--line)}
+header b{font-size:1.1rem}header small{display:block;color:var(--mute)}
+#log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.m{max-width:85%;padding:10px 14px;border-radius:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.me{align-self:flex-end;background:var(--me);color:#fff;border-bottom-right-radius:4px}
+.bot{align-self:flex-start;background:var(--bot);border-bottom-left-radius:4px}
+.meta{display:block;margin-top:6px;font-size:.78rem;color:var(--mute)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-self:flex-start;max-width:95%}
+.chips button{font:inherit;font-size:.88rem;cursor:pointer;background:var(--chip);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 12px;text-align:left}
+.chips button:hover{border-color:var(--me)}
+.typing{color:var(--mute)}
+form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
+input{flex:1;font:inherit;color:var(--ink);background:var(--bot);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+button.send{font:inherit;font-weight:600;background:var(--me);color:#fff;border:0;border-radius:12px;padding:0 18px;cursor:pointer}
+:focus-visible{outline:3px solid var(--me);outline-offset:2px}
+</style></head>
+<body><div class="app">
+<header><b>ShopEasy Help</b><small>Ask about orders, delivery, returns, payments</small></header>
+<div id="log" aria-live="polite"></div>
+<form id="f"><input id="q" placeholder="Type your question…" autocomplete="off" maxlength="300" aria-label="Your question"><button class="send">Send</button></form>
+</div>
+<script>
+/* ===== 1. FAQ data ===== */
+const FAQS=[
+["How do I track my order?","Go to My Account > Orders and tap Track. You will also get a tracking link by email and SMS once your order ships.","tracking track status where is my order package parcel shipment delivery location"],
+["How long does delivery take?","Standard delivery takes 3-5 business days. Express delivery takes 1-2 business days in major cities.","shipping time days arrive when reach deliver late delay delayed"],
+["What are the shipping charges?","Shipping is free on orders above Rs. 499. Below that, a flat fee of Rs. 49 applies. Express delivery costs Rs. 99.","delivery fee cost price free shipping charge"],
+["How can I cancel my order?","You can cancel from My Account > Orders > Cancel until the order is shipped. After shipping, please use the return option instead.","cancellation cancel stop undo remove order"],
+["What is your return policy?","You can return most items within 10 days of delivery if they are unused and in original packaging.","return send back policy days window exchange"],
+["How do I get a refund?","Refunds are issued to your original payment method within 5-7 business days after we receive the returned item.","money back refund time credit reimbursement"],
+["Which payment methods do you accept?","We accept UPI, credit/debit cards, net banking, popular wallets and Cash on Delivery for orders up to Rs. 5,000.","pay paying payment methods card upi cod cash netbanking wallet"],
+["My payment failed but money was deducted. What should I do?","Do not worry. The amount is automatically refunded within 3-5 business days. If it is not, contact support with your transaction ID.","failed deducted debited transaction money cut payment error"],
+["How do I reset my password?","Tap Forgot Password on the login screen, enter your registered email or phone number and follow the OTP link to set a new password.","forgot password login reset change unable sign in otp"],
+["How do I create an account?","Tap Sign Up, enter your name, email and phone number, verify the OTP and you are ready to shop.","register signup join new account profile"],
+["Do you offer Cash on Delivery?","Yes, Cash on Delivery is available for orders up to Rs. 5,000 in most pin codes. A Rs. 30 handling fee may apply.","cod cash pay on delivery"],
+["How do I apply a coupon code?","Enter the code in the Apply Coupon box on the cart page before checkout. Only one coupon can be used per order.","discount promo voucher offer code coupon apply"],
+["Can I change my delivery address?","You can change the address from My Account > Orders before the order is shipped. After shipping, contact support.","edit update shipping address location wrong"],
+["What if I receive a damaged or wrong product?","We are sorry about that. Raise a request within 48 hours from My Account > Orders with a photo and we will arrange a free replacement or refund.","broken defective wrong item incorrect damaged missing"],
+["How do I contact customer support?","Email support@shopeasy.example or call 1800-123-4567 (9 AM to 9 PM, Mon-Sat). You can also use the Help section in the app.","help phone call email agent complaint reach human"],
+["Do you ship internationally?","Not yet. We currently deliver only within India, covering over 19,000 pin codes.","abroad overseas outside country international worldwide usa uk"],
+["Is there a warranty on products?","Electronics carry the manufacturer's warranty, usually 1 year. Warranty details are listed on each product page.","guarantee warranty repair service period"]
+].map(([q,a,k])=>({q,a,k}));
+
+/* ===== 2. NLP: tokenize, clean, stem ===== */
+const STOP=new Set("a an the is are was were be been am do does did i me my we our you your it its to of in on at for from with and or but so if then than that this these those can could would should will shall may might please hi hello hey tell about want need get let us there here what how".split(" "));
+const SMALL={greet:[["hi","hello","hey","namaste","hii"],"Hello! 👋 I'm the ShopEasy assistant. Ask me about orders, delivery, returns or payments."],
+ thanks:[["thanks","thank","thx","shukriya","dhanyavaad"],"You're welcome! Anything else I can help with?"],
+ bye:[["bye","goodbye","later"],"Goodbye! Happy shopping 🛍️"]};
+function stem(w){
+  if(w.length<4)return w;
+  w=w.replace(/(ies|y)$/,"i").replace(/(ments?|ings?|ed|es|s)$/,m=>w.length-m.length>=3?"":m);
+  return w.replace(/([a-z])\1$/,"$1");
+}
+const tokenize=t=>(t.toLowerCase().match(/[a-z0-9]+/g)||[]);
+function preprocess(t){return tokenize(t).filter(w=>!STOP.has(w)).map(stem)}
+function terms(tokens){const r=[...tokens];for(let i=0;i<tokens.length-1;i++)r.push(tokens[i]+" "+tokens[i+1]);return r}
+
+/* ===== 3. TF-IDF + cosine similarity ===== */
+const docs=FAQS.map(f=>terms(preprocess(f.q+" "+f.q+" "+f.k)));
+const df={};docs.forEach(d=>new Set(d).forEach(t=>df[t]=(df[t]||0)+1));
+const idf=t=>Math.log((docs.length+1)/((df[t]||0)+1))+1;
+function vec(ts){const c={};ts.forEach(t=>c[t]=(c[t]||0)+1);const v={};let n=0;
+  for(const t in c){if(!(t in df))continue;const x=(1+Math.log(c[t]))*idf(t);v[t]=x;n+=x*x}
+  n=Math.sqrt(n)||1;for(const t in v)v[t]/=n;return v}
+const docVecs=docs.map(vec);
+const cosine=(a,b)=>{let s=0;for(const t in a)if(b[t])s+=a[t]*b[t];return s};
+
+/* ===== 4. Reply logic ===== */
+const HIGH=0.25,LOW=0.12;
+const suggest=(n=4)=>FAQS.slice(0,n).map(f=>f.q);
+function ask(text){
+  const words=tokenize(text);
+  for(const k in SMALL){const keys=SMALL[k][0];
+    if(words.some(w=>keys.includes(w))&&words.every(w=>keys.includes(w)||STOP.has(w)))return{type:"smalltalk",answer:SMALL[k][1]}}
+  const clean=preprocess(text);
+  if(!clean.length)return{type:"fallback",answer:"Could you type your question in a few more words?",suggestions:suggest()};
+  const qv=vec(terms(clean));
+  const sims=docVecs.map((d,i)=>[cosine(qv,d),i]).sort((a,b)=>b[0]-a[0]);
+  const [score,best]=sims[0];
+  if(score>=HIGH)return{type:"answer",answer:FAQS[best].a,matched:FAQS[best].q,score};
+  if(score>=LOW)return{type:"unsure",answer:"I'm not fully sure. Did you mean one of these?",suggestions:sims.slice(0,3).filter(s=>s[0]>0.05).map(s=>FAQS[s[1]].q)};
+  return{type:"fallback",answer:"Sorry, I couldn't find an answer to that. Try one of these or contact support.",suggestions:suggest()};
+}
+/* ===== END NLP ===== */
+
+/* ===== 5. Chat UI ===== */
+const log=document.getElementById("log"),q=document.getElementById("q");
+function add(text,cls,meta){const d=document.createElement("div");d.className="m "+cls;d.textContent=text;
+  if(meta){const s=document.createElement("span");s.className="meta";s.textContent=meta;d.appendChild(s)}
+  log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
+function chips(list){if(!list||!list.length)return;const w=document.createElement("div");w.className="chips";
+  list.forEach(t=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.onclick=()=>{w.remove();send(t)};w.appendChild(b)});
+  log.appendChild(w);log.scrollTop=log.scrollHeight}
+function send(text){
+  add(text,"me");const t=add("Typing…","bot typing");
+  setTimeout(()=>{const d=ask(text);t.remove();
+    add(d.answer,"bot",d.type==="answer"?"Matched: “"+d.matched+"” · confidence "+Math.round(d.score*100)+"%":"");
+    chips(d.suggestions)},450);
+}
+document.getElementById("f").onsubmit=e=>{e.preventDefault();const v=q.value.trim();if(!v)return;q.value="";send(v)};
+add("Hi! 👋 I'm the ShopEasy assistant. Pick a question or type your own.","bot");
+chips(suggest(5));
+</script></body></html>
